@@ -15,7 +15,7 @@ from typing import Optional
 import ops
 from charms.data_platform_libs.v0.data_models import TypedCharmBase
 from charms.data_platform_libs.v0.s3 import S3Requirer
-from charms.grafana_agent.v0.cos_agent import COSAgentProvider
+from charms.grafana_agent.v0.cos_agent import COSAgentProvider, charm_tracing_config
 from charms.mysql.v0.async_replication import (
     MySQLAsyncReplicationConsumer,
     MySQLAsyncReplicationOffer,
@@ -42,7 +42,7 @@ from charms.mysql.v0.tls import MySQLTLS
 from charms.observability_libs.v1.cert_handler import CertHandler
 from charms.rolling_ops.v0.rollingops import RollingOpsManager
 from charms.tempo_k8s.v1.charm_tracing import trace_charm
-from charms.tempo_k8s.v2.tracing import TracingEndpointRequirer, charm_tracing_config
+from charms.tempo_k8s.v2.tracing import TracingEndpointRequirer
 from ops import (
     ActiveStatus,
     BlockedStatus,
@@ -179,6 +179,7 @@ class MySQLOperatorCharm(MySQLCharmBase, TypedCharmBase[CharmConfig]):
             metrics_rules_dir="./src/alert_rules/prometheus",
             logs_rules_dir="./src/alert_rules/loki",
             log_slots=[f"{CHARMED_MYSQL_SNAP_NAME}:logs"],
+            tracing_protocols=[TRACING_PROTOCOL]
         )
         self.framework.observe(
             self.on[COS_AGENT_RELATION_NAME].relation_created, self._on_cos_agent_relation_created
@@ -202,11 +203,11 @@ class MySQLOperatorCharm(MySQLCharmBase, TypedCharmBase[CharmConfig]):
         self.replication_offer = MySQLAsyncReplicationOffer(self)
         self.replication_consumer = MySQLAsyncReplicationConsumer(self)
 
-        self.tracing = TracingEndpointRequirer(
-            self, relation_name=TRACING_RELATION_NAME, protocols=[TRACING_PROTOCOL]
-        )
+        # self.tracing = TracingEndpointRequirer(
+        #     self, relation_name=TRACING_RELATION_NAME, protocols=[TRACING_PROTOCOL]
+        # )
         self.tracing_endpoint_config, self.tracing_server_ca_cert_config = charm_tracing_config(
-            self.tracing, TRACING_SERVER_CA_CERT_PATH
+            self._grafana_agent, TRACING_SERVER_CA_CERT_PATH
         )
 
         self.cert_handler = CertHandler(
@@ -619,11 +620,13 @@ class MySQLOperatorCharm(MySQLCharmBase, TypedCharmBase[CharmConfig]):
     @property
     def tracing_endpoint(self) -> Optional[str]:
         """The tracing endpoint if tracing is ready."""
+        logger.info(f"Tracing endpoint: {self.tracing_endpoint_config}")
         return self.tracing_endpoint_config
 
     @property
     def tracing_server_ca_cert(self) -> Optional[str]:
         """The tracing server CA cert if such a CA cert exists."""
+        logger.info(f"CA cert: {self.tracing_server_ca_cert_config}")
         return self.tracing_server_ca_cert_config
 
     @property
